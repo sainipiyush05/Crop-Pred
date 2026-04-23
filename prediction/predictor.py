@@ -6,7 +6,12 @@ class CropPredictor:
     """
     Service for making crop predictions using the trained XGBoost model.
     """
-    def __init__(self, model_dir="/Users/piyushsaini/Desktop/Mes projets/AgroWare_crop/models"):
+    def __init__(self, model_dir=None):
+        if model_dir is None:
+            # Set default path relative to this file's location
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            model_dir = os.path.join(base_dir, "models")
+            
         self.model_path = os.path.join(model_dir, "crop_model.joblib")
         self.scaler_path = os.path.join(model_dir, "scaler.joblib")
         self.encoder_path = os.path.join(model_dir, "label_encoder.joblib")
