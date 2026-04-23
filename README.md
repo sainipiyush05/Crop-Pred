@@ -99,8 +99,30 @@ The training pipeline is documented in `models/train_model.ipynb`. It covers:
 - [ICAR](https://icar.org.in/) for Indian soil survey data.
 
 
-## Run Commands
+## 🚀 How to Run
+
+### 1. Start the API Server
+Run the following command in the project root:
 ```bash
-uvicorn app:app --host 0.0.0.0 --port $PORT
-uvicorn app:app
+python3 app.py
+```
+*Alternatively, using uvicorn directly:*
+```bash
+uvicorn app:app --reload
+```
+
+### 2. Interactive API Documentation
+Once the server is running, open your browser and navigate to:
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs) (Recommended for testing)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+### 3. Test Crop Prediction
+You can test the prediction endpoint using `curl`:
+```bash
+curl -X POST "http://localhost:8000/predict/crop" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "location": "Punjab",
+           "month": 6
+         }'
 ```

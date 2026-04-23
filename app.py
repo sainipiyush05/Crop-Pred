@@ -15,11 +15,14 @@ from pydantic import BaseModel, Field, field_validator
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from services.feature_engineering import FeatureEngineeringService, FeatureVector
+from prediction.predictor import CropPredictor
+import traceback
 
 
 # ── App lifecycle ────────────────────────────────────────────────────────────
 
 feature_service: Optional[FeatureEngineeringService] = None
+crop_predictor: Optional[CropPredictor] = None
 
 
 @asynccontextmanager
@@ -28,13 +31,15 @@ async def lifespan(app: FastAPI):
     Initialise AgroWare services once at startup.
     """
 
-    global feature_service
+    global feature_service, crop_predictor
 
     try:
         feature_service = FeatureEngineeringService(
             opencage_api_key=os.getenv("OPENCAGE_API_KEY"),
             openweather_api_key=os.getenv("OPENWEATHER_API_KEY"),
         )
+        
+        crop_predictor = CropPredictor()
 
         print("[AgroWare] Services initialised successfully.")
 
@@ -121,7 +126,22 @@ class CropPredictionResponse(BaseModel):
     success: bool
     location_resolved: str
     features: FeatureVectorResponse
-    model_input: list[float]
+    model_inference_input: list[float]
+    message: str
+
+
+class PredictionResult(BaseModel):
+    crop: str
+    confidence: float
+
+
+class FinalCropPredictionResponse(BaseModel):
+    success: bool
+    location_resolved: str
+    prediction: str
+    confidence: float
+    top_suggestions: list[PredictionResult]
+    features: FeatureVectorResponse
     message: str
 
 
@@ -194,7 +214,7 @@ async def get_features(request: CropPredictionRequest):
                 soil_source=fv.soil_source,
             ),
 
-            model_input=fv.to_model_input(),
+            model_inference_input=fv.to_model_input(),
 
             message=(
                 f"Environmental features collected for "
@@ -216,6 +236,76 @@ async def get_features(request: CropPredictionRequest):
             status_code=422,
             detail=f"Feature collection failed: {str(e)}"
         )
+
+
+@app.post(
+    "/predict/crop",
+    response_model=FinalCropPredictionResponse,
+    tags=["Prediction"],
+)
+async def predict_crop(request: CropPredictionRequest):
+    """
+    Collects environmental features for the location + month and predicts the best crop.
+    """
+
+    if feature_service is None or crop_predictor is None:
+        raise HTTPException(
+            status_code=500,
+            detail="AgroWare services not initialised"
+        )
+
+    try:
+        # 1. Build environmental features
+        result = feature_service.build_features(
+            location=request.location,
+            month=request.month,
+        )
+        
+        fv: FeatureVector = result.feature_vector
+        features_list = fv.to_model_input()
+
+        # 2. Perform ML inference
+        prediction_output = crop_predictor.predict(features_list)
+
+        return FinalCropPredictionResponse(
+            success=True,
+            location_resolved=f"{result.location.district}, {result.location.state}",
+            prediction=prediction_output["prediction"],
+            confidence=prediction_output["confidence"],
+            top_suggestions=[
+                PredictionResult(crop=s["crop"], confidence=s["confidence"])
+                for s in prediction_output["top_suggestions"]
+            ],
+            features=FeatureVectorResponse(
+                N=fv.N,
+                P=fv.P,
+                K=fv.K,
+                temperature=fv.temperature,
+                humidity=fv.humidity,
+                ph=fv.ph,
+                rainfall=fv.rainfall,
+                state=fv.state,
+                district=fv.district,
+                month=fv.month,
+                month_name=fv.month_name,
+                season=fv.season,
+                latitude=fv.latitude,
+                longitude=fv.longitude,
+                weather_source=fv.weather_source,
+                soil_source=fv.soil_source,
+            ),
+            message=(
+                f"Prediction successful for {fv.district}, {fv.state}. "
+                f"Recommended crop: {prediction_output['prediction']}."
+            )
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"[AgroWare] Prediction failed: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
 # ── Local Development Runner ────────────────────────────────────────────────
