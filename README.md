@@ -97,3 +97,10 @@ The training pipeline is documented in `models/train_model.ipynb`. It covers:
 - [NASA POWER](https://power.larc.nasa.gov/) for climate data.
 - [ISRIC SoilGrids](https://www.isric.org/) for global soil information.
 - [ICAR](https://icar.org.in/) for Indian soil survey data.
+
+
+## Run Commands
+```bash
+uvicorn app:app --host 0.0.0.0 --port $PORT
+uvicorn app:app
+```
